@@ -3,6 +3,8 @@ import http.client
 import json
 import smtplib
 from email.message import EmailMessage
+import requests
+import os
 from abc import ABC, abstractmethod
 
 
@@ -19,10 +21,9 @@ class NotificationChannel(ABC):
 
 class EmailSender(NotificationChannel):
 
-    def send(self, recipient, message):
-        sender = "kehlaouiayman@gmail.com"
+    def send(self,sender, recipient,subject, message):
         msg = EmailMessage()
-        msg["Subject"] = "Hello from Python"
+        msg["Subject"] = subject
         msg["From"] = sender
         msg["To"] = recipient
         msg.set_content(message)
@@ -71,11 +72,26 @@ class SMSSender(NotificationChannel):
 class SlackSender(NotificationChannel):
 
     def send(self, recipient, message):
-        print("Sending Slack message...")
-        print("Channel:", recipient)
-        print("Message:", message)
+        url = "https://slack.com/api/chat.postMessage"
+        token = os.getenv("SLACK_BOT_TOKEN")
+        
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "channel": recipient,
+            "text": message
+        }
 
-
+        response = requests.post(url, headers=headers, json=payload)
+        data = response.json()
+        
+        if data.get("ok"):
+            print("Slack message sent successfully!")
+        else:
+            print(f"Failed to send Slack message: {data.get('error')}")
 # WHATSAPP SENDER
 
 class WhatsAppSender(NotificationChannel):
@@ -108,18 +124,17 @@ class NotificationService:
 # TESTING THE SYSTEM
 
 if __name__ == "__main__":
-    # Create notification channels
     email = EmailSender()
     sms = SMSSender()
     slack = SlackSender()
     whatsapp = WhatsAppSender()
 
-    # Inject channels into the service
     email_service = NotificationService(email)
     sms_service = NotificationService(sms)
     slack_service = NotificationService(slack)
     whatsapp_service = NotificationService(whatsapp)
 
-    # email_service.notify("kehlaouiayman@gmail.com", "Hello Datheon!")
+    # email_service.notify("kehlaouiayman@gmail.com",'kehlaouiayman@gmail.com','testing python script...', "Hello Datheon!")
     # sms_service.notify("+212694142908", "Hello Datheon")
     # whatsapp_service.notify("+212694142908", "Hello Datheon", hour=19, minute=55)
+    #slack_service.notify('projet-de-synthèse-','hello')
