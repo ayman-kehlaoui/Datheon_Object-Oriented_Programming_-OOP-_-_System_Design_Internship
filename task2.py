@@ -1,3 +1,4 @@
+
 import pywhatkit as kit
 import http.client
 import json
@@ -13,7 +14,7 @@ from abc import ABC, abstractmethod
 class NotificationChannel(ABC):
 
     @abstractmethod
-    def send(self, recipient, message):
+    def send(self, recipient, message, **kwargs):
         pass
 
 
@@ -21,7 +22,12 @@ class NotificationChannel(ABC):
 
 class EmailSender(NotificationChannel):
 
-    def send(self,sender, recipient,subject, message):
+    def send(self, recipient, message, **kwargs):
+
+        sender = kwargs.get("sender")
+        subject = kwargs.get("subject", "Notification")
+        token = os.getenv("GMAIL_APP_PASSWORD")
+
         msg = EmailMessage()
         msg["Subject"] = subject
         msg["From"] = sender
@@ -29,7 +35,7 @@ class EmailSender(NotificationChannel):
         msg.set_content(message)
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender, "vcwe jvpy gaoo lrqn")
+            server.login(sender, token)
             server.send_message(msg)
 
         print("Email sent successfully!")
@@ -39,8 +45,12 @@ class EmailSender(NotificationChannel):
 
 class SMSSender(NotificationChannel):
 
-    def send(self, recipient, message):
+    def send(self, recipient, message, **kwargs):
+
+        api_key = os.getenv("INFOBIP_API_KEY")
+
         conn = http.client.HTTPSConnection("m9lq62.api.infobip.com")
+
         payload = json.dumps({
             "messages": [
                 {
@@ -56,30 +66,43 @@ class SMSSender(NotificationChannel):
                 }
             ]
         })
+
         headers = {
-            'Authorization': 'App cd8bbe61537d22681297f7c427816c4c-d005ae5d-dfb3-4ca4-a9f6-795e56b3fc64',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            "Authorization": f"App {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
+
         conn.request("POST", "/sms/3/messages", payload, headers)
+
         res = conn.getresponse()
         data = res.read()
+
+        if res.status >= 400:
+            raise Exception(data.decode("utf-8"))
+
         print(data.decode("utf-8"))
+
+        conn.close()
 
 
 # SLACK SENDER
 
 class SlackSender(NotificationChannel):
 
-    def send(self, recipient, message):
+    def send(self, recipient, message, **kwargs):
+
         url = "https://slack.com/api/chat.postMessage"
         token = os.getenv("SLACK_BOT_TOKEN")
-        
+
+        if not token:
+            raise ValueError("Slack token is missing")
+
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
             "channel": recipient,
             "text": message
@@ -87,19 +110,33 @@ class SlackSender(NotificationChannel):
 
         response = requests.post(url, headers=headers, json=payload)
         data = response.json()
-        
+
         if data.get("ok"):
             print("Slack message sent successfully!")
         else:
             print(f"Failed to send Slack message: {data.get('error')}")
+
+
 # WHATSAPP SENDER
 
 class WhatsAppSender(NotificationChannel):
 
-    def send(self, recipient, message, hour=None, minute=None):
+    def send(self, recipient, message, **kwargs):
+
+        hour = kwargs.get("hour")
+        minute = kwargs.get("minute")
+
+        if hour is None or minute is None:
+            raise ValueError("Hour and minute are required")
+
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError("Invalid time")
+
         print("Sending WhatsApp message...")
+
         kit.sendwhatmsg(recipient, message, hour, minute)
-        print("Message sent.")
+
+        print("Message sent!")
 
 
 # NOTIFICATION SERVICE MANAGER
@@ -107,15 +144,18 @@ class WhatsAppSender(NotificationChannel):
 class NotificationService:
 
     def __init__(self, channel):
+
         if not isinstance(channel, NotificationChannel):
             raise ValueError("Invalid notification channel")
+
         self.channel = channel
 
     def notify(self, recipient, message, **kwargs):
-        if not isinstance(recipient, str):
+
+        if not isinstance(recipient, str) or not recipient.strip():
             raise ValueError("Invalid recipient")
 
-        if not isinstance(message, str):
+        if not isinstance(message, str) or not message.strip():
             raise ValueError("Message cannot be empty")
 
         self.channel.send(recipient, message, **kwargs)
@@ -124,6 +164,7 @@ class NotificationService:
 # TESTING THE SYSTEM
 
 if __name__ == "__main__":
+
     email = EmailSender()
     sms = SMSSender()
     slack = SlackSender()
@@ -134,7 +175,24 @@ if __name__ == "__main__":
     slack_service = NotificationService(slack)
     whatsapp_service = NotificationService(whatsapp)
 
-    # email_service.notify("kehlaouiayman@gmail.com",'kehlaouiayman@gmail.com','testing python script...', "Hello Datheon!")
-    # sms_service.notify("+212694142908", "Hello Datheon")
-    # whatsapp_service.notify("+212694142908", "Hello Datheon", hour=19, minute=55)
-    #slack_service.notify('projet-de-synthèse-','hello')
+    # EMAIL
+    # email_service.notify(
+    #     "kehlaouiayman@gmail.com",
+    #     "Hello Datheon!",
+    #     sender="kehlaouiayman@gmail.com",
+    #     subject="Testing Python Script"
+    # )
+
+    # SMS
+    # sms_service.notify("+212694142908", "Hello Datheon!")
+
+    # SLACK
+    # slack_service.notify("projet-de-synthèse-", "Hello Datheon!")
+
+    # WHATSAPP
+    # whatsapp_service.notify(
+    #     "+212694142908",
+    #     "Hello Datheon!",
+    #     hour=19,
+    #     minute=55
+    # )
